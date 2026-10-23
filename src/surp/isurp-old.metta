@@ -1,372 +1,697 @@
-;; High-Level Flow
-; pattern
-;  -> count support
-;  -> compute actual probability
-;  -> generate partitions of conjuncts
-;  -> estimate probability of each partition by multiplying block probabilities
-;  -> take [min, max]
-;  -> distance(actual, [min, max])
-;  -> optional normalization
+;; =============================================================================
+;;      Converted isurp-old.metta ALGORITHM (MM2 / MORK)
+;; ============================================================================
 
+        ;;****************************
+        ;; conditional based calling
+        ;;****************************
 
+;; =============================================================================
+;;  Main Function Calling: isurp-old (2-Conjunct Pattern)
+;; =============================================================================
 
+    ;; calling with two conjection c1 and c2 and assing conject with index value
+(exec (freq 080 isurp-start-2)
+  (, (isurp-old (, $c1 $c2) $db $norm))
+  (O
+    (pure (isurp2-init $ctx (, $c1 $c2) $db $norm) $ctx
+      (vars_to_indices (' (, $c1 $c2))))
+    (- (isurp-old (, $c1 $c2) $db $norm))))
 
+    ;; initialize with zero value all count of partition and joint at first 
+(exec (freq 081 isurp-init-2-b)
+  (, (isurp2-init $ctx (, $c1 $c2) $db $norm))
+  (O
+    (+ (isurp2-eval $ctx ($c1 $c2) $db $norm))
+    (+ (isurp2-cnt-total $ctx $norm 0))
+    (+ (isurp2-cnt-j $ctx $norm 0))
+    (+ (isurp2-cnt-1 $ctx $norm 0))
+    (+ (isurp2-cnt-2 $ctx $norm 0))
+    (- (isurp2-init $ctx (, $c1 $c2) $db $norm))))
 
-;;===============================================================
-;; Pipeline
-;;===============================================================
+    ;; total match count from atomespace
+(exec (freq 082 isurp2-cnt-db)
+  (, (isurp2-eval $ctx ($c1 $c2) $db $norm)
+     ($db $atom)
+     (isurp2-cnt-total $ctx $norm 0))
+  (O
+    (count (isurp2-cnt-total $ctx $norm $n) $n $atom)
+    (- (isurp2-cnt-total $ctx $norm 0))))
 
-;; Legacy public input. Index the raw pattern once and use that canonical value
-;; as the owner of every intermediate fact.
-(exec (surp s010 raw-input)
-    (, (INPUT PATTERN ($pattern $support)))
-    (O
-        (pure
-            (isurp-old-pattern $indexed-copy $pattern $support)
-            $indexed-copy
-            (vars_to_indices
-                (cdr-atom (' $pattern))))))
+    ;; total joint count from all partition
+(exec (freq 082 isurp2-cnt-joint)
+  (, (isurp2-eval $ctx ($c1 $c2) $db $norm)
+     ($db $c1)
+     ($db $c2)
+     (isurp2-cnt-j $ctx $norm 0))
+  (O
+    (count (isurp2-cnt-j $ctx $norm $j) $j ($c1 $c2))
+    (- (isurp2-cnt-j $ctx $norm 0))))
 
-;; Compatibility input for callers that already provide both the indexed id and
-;; the raw pattern.
-(exec (surp s010 normalize-scoped-input)
-    (, (INPUT SCOPED-PATTERN ($pattern-id $pattern $support)))
-    (, (isurp-old-pattern $pattern-id $pattern $support)))
+    ;;total match with conjection one pattern
+(exec (freq 082 isurp2-cnt-one)
+  (, (isurp2-eval $ctx ($c1 $c2) $db $norm)
+     ($db $c1)
+     (isurp2-cnt-1 $ctx $norm 0))
+  (O
+    (count (isurp2-cnt-1 $ctx $norm $k1) $k1 $c1)
+    (- (isurp2-cnt-1 $ctx $norm 0))))
 
-;; Integrated input from the frequent miner. `$indexed-pattern` is already the
-;; canonical pattern id, so only convert it to real MM2 variables for database
-;; matching; do not index it again.
-(exec (surp s010 indexed-input)
-    (, (INPUT SURP-MODE isurp-old)
-       (INPUT INDEXED-PATTERN ($indexed-pattern $support)))
-    (O
-        (pure
-            (isurp-old-pattern $indexed-pattern $pattern $support)
-            $pattern
-            (indices_to_vars
-                (cons , (' $indexed-pattern))))))
+    ;;total match count with conject two from space
+(exec (freq 082 isurp2-cnt-two)
+  (, (isurp2-eval $ctx ($c1 $c2) $db $norm)
+     ($db $c2)
+     (isurp2-cnt-2 $ctx $norm 0))
+  (O
+    (count (isurp2-cnt-2 $ctx $norm $k2) $k2 $c2)
+    (- (isurp2-cnt-2 $ctx $norm 0))))
 
-(exec (surp s020 init)
-    (, (isurp-old-pattern $ctx $pattern $support))
-    (O
-        (pure
-            (isurp-num-of-conjuncts $ctx $pattern $count)
-            $count
-            (size-atom
-                (cdr-atom (' $pattern))))))
-
-;; Expose the canonical owner as the indexed pattern consumed by partitioning.
-(exec (surp s021 expose-indexed-pattern)
-    (, (isurp-old-pattern $ctx $pattern $support))
-    (, (indexed-pattern $ctx $ctx)))
-
-(exec (surp s030 total-count)
-    (, (INPUT DB-SIZE $n)
-       (isurp-num-of-conjuncts $ctx $pattern $k))
-    (O
-        (pure
-            (isurp-total-count-of $ctx $pattern $total)
-            $total
+    ;; here to get mathmatical bilomial calculation
+(exec (freq 083 isurp2-calc)
+  (, (isurp2-eval $ctx ($c1 $c2) $db $norm)
+     (isurp2-cnt-total $ctx $norm $n)
+     (isurp2-cnt-j $ctx $norm $j)
+     (isurp2-cnt-1 $ctx $norm $k1)
+     (isurp2-cnt-2 $ctx $norm $k2))
+  (O
+    (pure (isurp2-p-joint $ctx $norm $ppat) $ppat
+      (f64_to_string
+        (div_f64
+          (f64_from_string $j)
+          (f64_from_string
             (i64_to_string
+              (div_i64
+                (falling_factorial (i64_from_string $n) (i64_from_string 2))
+                (factorial (i64_from_string 2))))))))
+    (pure (isurp2-p-indep $ctx $norm $pindep) $pindep
+      (f64_to_string
+        (product_f64
+          (div_f64
+            (f64_from_string $k1)
+            (f64_from_string
+              (i64_to_string
                 (div_i64
-                    (falling_factorial
-                        (i64_from_string $n)
-                        (i64_from_string $k))
-                    (factorial
-                        (i64_from_string $k)))))))
+                  (falling_factorial (i64_from_string $n) (i64_from_string 2))
+                  (factorial (i64_from_string 2))))))
+          (div_f64
+            (f64_from_string $k2)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 2))
+                  (factorial (i64_from_string 2)))))))))
+    (- (isurp2-eval $ctx ($c1 $c2) $db $norm))
+    (- (isurp2-cnt-total $ctx $norm $n))
+    (- (isurp2-cnt-j $ctx $norm $j))
+    (- (isurp2-cnt-1 $ctx $norm $k1))
+    (- (isurp2-cnt-2 $ctx $norm $k2))))
 
-(exec (surp s040 empirical-prob)
-    (, (isurp-old-pattern $ctx $pattern $support)
-       (isurp-total-count-of $ctx $pattern $count))
-    (O
-        (pure
-            (isurp-prob-of $ctx $pattern $prob)
-            $prob
-            (f64_to_string
-                (div_f64
-                    (f64_from_string $support)
-                    (f64_from_string $count))))))
+    ;; Last result with Non Normalized(False)
+(exec (freq 084 isurp2-emit-false)
+  (, (isurp2-p-joint $ctx False $ppat)
+     (isurp2-p-indep $ctx False $pindep))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (abs_f64
+            (sub_f64
+              (f64_from_string $ppat)
+              (clamp_f64
+                (f64_from_string $ppat)
+                (f64_from_string $pindep)
+                (f64_from_string $pindep))))
+          (f64_from_string 1.0))))
+    (- (isurp2-p-joint $ctx False $ppat))
+    (- (isurp2-p-indep $ctx False $pindep))))
 
-(exec (surp s050 partition-list)
-    (, (indexed-pattern $ctx $indexed-pattern))
-    (O
-        (pure
-            (partitions-of $ctx $indexed-pattern $indexed-partition)
-            $indexed-partition
-            (partitions (' $indexed-pattern)))))
-
-
-
-(exec (surp s060 emit-partition)
-    (, (partitions-of $ctx $indexed-pattern $indexed-partition)
-       (exec (surp s060 emit-partition) $src $sink))
-    (O
-        (pure
-            (partition $ctx $car)
-            $car
-            (car-atom (' $indexed-partition)))
-        (pure
-            (partitions-of $ctx $indexed-pattern $cdr)
-            $cdr
-            (cdr-atom (' $indexed-partition)))
-        (- (partitions-of $ctx $indexed-pattern $indexed-partition))
-        (+ (exec (surp s060 emit-partition) $src $sink))))
-
-;; Copy partitions before expanding them into blocks.
-(exec (surp s070 copy-partition)
-    (, (partition $ctx $partition))
-    (, (copy-of-partition $ctx $partition $partition)))
-
-(exec (surp s080 emit-block)
-    (, (copy-of-partition $ctx $partition $partition-copy)
-       (exec (surp s080 emit-block) $src $sink))
-    (O
-        (pure
-            (block $ctx $partition $block)
-            $block
-            (car-atom (' $partition-copy)))
-        (pure
-            (copy-of-partition $ctx $partition $cdr)
-            $cdr
-            (cdr-atom (' $partition-copy)))
-        (- (copy-of-partition $ctx $partition $partition-copy))
-        (+ (exec (surp s080 emit-block) $src $sink))))
-
-;; Convert each indexed block back to a real variable pattern and count its support.
-(exec (surp s090 count-block-support)
-    (, (block $ctx $partition $indexed-block))
-    (O
-        (pure
-            (exec (surp s090 count-block-support)
-                $query
-                (O
-                    (count
-                        (block-support $ctx $partition $indexed-block $support)
-                        $support
-                        $query)))
-            $query
-            (indices_to_vars
-                (cons , (' $indexed-block))))))
-
-;; Convert block support into block probability using the full pattern total count.
-(exec (surp s100 block-prob)
-    (, (isurp-old-pattern $ctx $pattern $pattern-support)
-       (isurp-total-count-of $ctx $pattern $total-count)
-       (block-support $ctx $partition $indexed-block $support))
-    (O
-        (pure
-            (block-prob $ctx $partition $indexed-block $prob)
-            $prob
-            (f64_to_string
-                (div_f64
-                    (f64_from_string $support)
-                    (f64_from_string $total-count))))))
-
-;; Current partition shapes have either two or three blocks.
-(exec (surp s110 product-2)
-    (, (partition $ctx ($b1 $b2))
-       (block-prob $ctx ($b1 $b2) $b1 $p1)
-       (block-prob $ctx ($b1 $b2) $b2 $p2))
-    (O
-        (pure
-            (partition-product $ctx ($b1 $b2) $product)
-            $product
-            (f64_to_string
-                (product_f64
-                    (f64_from_string $p1)
-                    (f64_from_string $p2))))))
-
-(exec (surp s111 product-3)
-    (, (partition $ctx ($b1 $b2 $b3))
-       (block-prob $ctx ($b1 $b2 $b3) $b1 $p1)
-       (block-prob $ctx ($b1 $b2 $b3) $b2 $p2)
-       (block-prob $ctx ($b1 $b2 $b3) $b3 $p3))
-    (O
-        (pure
-            (partition-product $ctx ($b1 $b2 $b3) $product)
-            $product
-            (f64_to_string
-                (product_f64
-                    (product_f64
-                        (f64_from_string $p1)
-                        (f64_from_string $p2))
-                    (f64_from_string $p3))))))
-
-;; Take [min, max] over the current three-conjunct partition products.
-(exec (surp s120 interval-bounds)
-    (, (indexed-pattern $ctx ($c1 $c2 $c3))
-       (partition-product $ctx (($c1) ($c2 $c3)) $p1)
-       (partition-product $ctx (($c1 $c3) ($c2)) $p2)
-       (partition-product $ctx (($c1 $c2) ($c3)) $p3)
-       (partition-product $ctx (($c1) ($c2) ($c3)) $p4))
-    (O
-        (pure
-            (min-partition-product $ctx $min)
-            $min
-            (min-atom (' ($p1 $p2 $p3 $p4))))
-        (pure
-            (max-partition-product $ctx $max)
-            $max
-            (max-atom (' ($p1 $p2 $p3 $p4))))))
-
-(exec (surp s130 interval-range)
-    (, (min-partition-product $ctx $min)
-       (max-partition-product $ctx $max))
-    (, (partition-product-range $ctx $min $max)))
-
-(exec (surp s140 distance-request)
-    (, (isurp-old-pattern $ctx $pattern $support)
-       (partition-product-range $ctx $emin $emax)
-       (isurp-prob-of $ctx $pattern $emp)
-       ((dst-from-interval $ctx $emin $emax $emp -> isurp-dst-of) $src $sink))
-    (,
-        (dst-request $ctx $emin $emax $emp isurp-dst-of)
-        (exec (surp s140 distance-request) $src $sink)))
-
-;; emp > emax: distance = emp - emax.
-(exec (surp s150 distance-above)
-    (, (dst-above? $ctx $emin $emax $emp $out true))
-    (O
-        (pure
-            ($out $ctx $distance)
-            $distance
-            (f64_to_string
-                (sub_f64
-                    (f64_from_string $emp)
-                    (f64_from_string $emax))))
-        (- (dst-request $ctx $emin $emax $emp $out))
-        (- (dst-above? $ctx $emin $emax $emp $out true))))
-
-;; emp < emin: distance = emin - emp.
-(exec (surp s151 distance-below)
-    (, (dst-below? $ctx $emin $emax $emp $out true))
-    (O
-        (pure
-            ($out $ctx $distance)
-            $distance
-            (f64_to_string
-                (sub_f64
-                    (f64_from_string $emin)
-                    (f64_from_string $emp))))
-        (- (dst-request $ctx $emin $emax $emp $out))
-        (- (dst-below? $ctx $emin $emax $emp $out true))))
-
-;; emin <= emp <= emax: distance = 0.0.
-(exec (surp s152 distance-inside)
-    (, (dst-inside? $ctx $emin $emax $emp $out true))
-    (O
-        (+ ($out $ctx 0.0))
-        (- (dst-request $ctx $emin $emax $emp $out))
-        (- (dst-inside? $ctx $emin $emax $emp $out true))))
+        ;; Last result with Non Normalized(True)
+(exec (freq 084 isurp2-emit-true)
+  (, (isurp2-p-joint $ctx True $ppat)
+     (isurp2-p-indep $ctx True $pindep))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (div_f64
+            (abs_f64
+              (sub_f64
+                (f64_from_string $ppat)
+                (clamp_f64
+                  (f64_from_string $ppat)
+                  (f64_from_string $pindep)
+                  (f64_from_string $pindep))))
+            (max_f64 (f64_from_string $pindep) (f64_from_string $ppat)))
+          (f64_from_string 1.0))))
+    (- (isurp2-p-joint $ctx True $ppat))
+    (- (isurp2-p-indep $ctx True $pindep))))
 
 
-;; If normalization is enabled, surprisingness = min(dst / max(emax, empirical probability), 1.0).
-(exec (surp s160 normalization-denom)
-    (, (INPUT NORMALIZATION TRUE)
-       (isurp-dst-of $ctx $dst)
-       (isurp-prob-of $ctx $pattern $prob)
-       (partition-product-range $ctx $emin $emax))
-    (O
-        (pure
-            (normalization-denom $ctx $dst $denom)
-            $denom
-            (max-atom (' ($emax $prob))))))
+;; =============================================================================
+;; 2. Main Function Calling: isurp-old (3-Conjunct Pattern)
+;; =============================================================================
 
-(exec (surp s170 normalization-candidate)
-    (, (INPUT NORMALIZATION TRUE)
-       (isurp-dst-of $ctx $dst)
-       (normalization-denom $ctx $dst $denom))
-    (O
-        (pure
-            (normalization-candidate $ctx $dst $candidate)
-            $candidate
-            (f64_to_string
-                (div_f64
-                    (f64_from_string $dst)
-                    (f64_from_string $denom))))))
+ 
+(exec (freq 080 isurp-start-3)
+  (, (isurp-old (, $c1 $c2 $c3) $db $norm))
+  (O
+    (pure (isurp3-init $ctx (, $c1 $c2 $c3) $db $norm) $ctx
+      (vars_to_indices (' (, $c1 $c2 $c3))))
+    (- (isurp-old (, $c1 $c2 $c3) $db $norm))))
 
-(exec (surp s180 normalized-result)
-    (, (INPUT NORMALIZATION TRUE)
-       (isurp-old-pattern $ctx $pattern $support)
-       (isurp-dst-of $ctx $dst)
-       (normalization-denom $ctx $dst $denom)
-       (normalization-candidate $ctx $dst $candidate))
-    (O
-        (pure
-            (isurp-old-of $pattern $value)
-            $value
-            (min-atom (' ($candidate 1.0))))
-        (pure
-            (isurp-old-of $ctx $pattern $value)
-            $value
-            (min-atom (' ($candidate 1.0))))
-        (- (normalization-denom $ctx $dst $denom))
-        (- (normalization-candidate $ctx $dst $candidate))
-        (- (isurp-dst-of $ctx $dst))))
+ ;;; initalize the value with zero for for each  possible condition 
+(exec (freq 081 isurp-init-3-b)
+  (, (isurp3-init $ctx (, $c1 $c2 $c3) $db $norm))
+  (O
+    (+ (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm))
+    (+ (isurp3-cnt-total $ctx $norm 0))
+    (+ (isurp3-cnt-j $ctx $norm 0))
+    (+ (isurp3-cnt-1 $ctx $norm 0))
+    (+ (isurp3-cnt-2 $ctx $norm 0))
+    (+ (isurp3-cnt-3 $ctx $norm 0))
+    (+ (isurp3-cnt-12 $ctx $norm 0))
+    (+ (isurp3-cnt-13 $ctx $norm 0))
+    (+ (isurp3-cnt-23 $ctx $norm 0))
+    (- (isurp3-init $ctx (, $c1 $c2 $c3) $db $norm))))
+
+    ;; Count total Database/Atome size 
+(exec (freq 082 isurp3-cnt-total)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $atom)
+     (isurp3-cnt-total $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-total $ctx $norm $n) $n $atom)
+    (- (isurp3-cnt-total $ctx $norm 0))))
+
+     ;; count the joint score with three condition and return/preserve to next
+(exec (freq 082 isurp3-cnt-j)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c1)
+     ($db $c2)
+     ($db $c3)
+     (isurp3-cnt-j $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-j $ctx $norm $j) $j ($c1 $c2 $c3))
+    (- (isurp3-cnt-j $ctx $norm 0))))
+    
+
+    ;; count each of condition with match pattern from atomspace 
+(exec (freq 082 isurp3-cnt-1)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c1)
+     (isurp3-cnt-1 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-1 $ctx $norm $k1) $k1 $c1)
+    (- (isurp3-cnt-1 $ctx $norm 0))))
+
+(exec (freq 082 isurp3-cnt-2)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c2)
+     (isurp3-cnt-2 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-2 $ctx $norm $k2) $k2 $c2)
+    (- (isurp3-cnt-2 $ctx $norm 0))))
+
+(exec (freq 082 isurp3-cnt-3)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c3)
+     (isurp3-cnt-3 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-3 $ctx $norm $k3) $k3 $c3)
+    (- (isurp3-cnt-3 $ctx $norm 0))))
+
+(exec (freq 082 isurp3-cnt-12)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c1)
+     ($db $c2)
+     (isurp3-cnt-12 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-12 $ctx $norm $k12) $k12 ($c1 $c2))
+    (- (isurp3-cnt-12 $ctx $norm 0))))
+
+(exec (freq 082 isurp3-cnt-13)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c1)
+     ($db $c3)
+     (isurp3-cnt-13 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-13 $ctx $norm $k13) $k13 ($c1 $c3))
+    (- (isurp3-cnt-13 $ctx $norm 0))))
+
+(exec (freq 082 isurp3-cnt-23)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     ($db $c2)
+     ($db $c3)
+     (isurp3-cnt-23 $ctx $norm 0))
+  (O
+    (count (isurp3-cnt-23 $ctx $norm $k23) $k23 ($c2 $c3))
+    (- (isurp3-cnt-23 $ctx $norm 0))))
 
 
 
-;; Otherwise, surprisingness is just the distance from the interval.
-(exec (surp s190 raw-result)
-    (, (INPUT NORMALIZATION FALSE)
-       (isurp-old-pattern $ctx $pattern $support)
-       (isurp-dst-of $ctx $dst))
-    (O
-        (+ (isurp-old-of $pattern $dst))
-        (+ (isurp-old-of $ctx $pattern $dst))
-        (- (isurp-dst-of $ctx $dst))))
+ ;;; after we get the each of count value with it's condition 
+(exec (freq 083 isurp3-calc)
+  (, (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm)
+     (isurp3-cnt-total $ctx $norm $n)
+     (isurp3-cnt-j $ctx $norm $j)
+     (isurp3-cnt-1 $ctx $norm $k1)
+     (isurp3-cnt-2 $ctx $norm $k2)
+     (isurp3-cnt-3 $ctx $norm $k3)
+     (isurp3-cnt-12 $ctx $norm $k12)
+     (isurp3-cnt-13 $ctx $norm $k13)
+     (isurp3-cnt-23 $ctx $norm $k23))
+  (O
+    (pure (isurp3-pj $ctx $norm $ppat) $ppat
+      (f64_to_string
+        (div_f64
+          (f64_from_string $j)
+          (f64_from_string
+            (i64_to_string
+              (div_i64
+                (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                (factorial (i64_from_string 3))))))))
+    (pure (isurp3-p1 $ctx $norm $p1) $p1
+      (f64_to_string
+        (product_f64
+          (div_f64
+            (f64_from_string $k12)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3))))))
+          (div_f64
+            (f64_from_string $k3)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3)))))))))
+    (pure (isurp3-p2 $ctx $norm $p2) $p2
+      (f64_to_string
+        (product_f64
+          (div_f64
+            (f64_from_string $k13)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3))))))
+          (div_f64
+            (f64_from_string $k2)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3)))))))))
+    (pure (isurp3-p3 $ctx $norm $p3) $p3
+      (f64_to_string
+        (product_f64
+          (div_f64
+            (f64_from_string $k1)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3))))))
+          (div_f64
+            (f64_from_string $k23)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3)))))))))
+    (pure (isurp3-p4 $ctx $norm $p4) $p4
+      (f64_to_string
+        (product_f64
+          (product_f64
+            (div_f64
+              (f64_from_string $k1)
+              (f64_from_string
+                (i64_to_string
+                  (div_i64
+                    (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                    (factorial (i64_from_string 3))))))
+            (div_f64
+              (f64_from_string $k2)
+              (f64_from_string
+                (i64_to_string
+                  (div_i64
+                    (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                    (factorial (i64_from_string 3)))))))
+          (div_f64
+            (f64_from_string $k3)
+            (f64_from_string
+              (i64_to_string
+                (div_i64
+                  (falling_factorial (i64_from_string $n) (i64_from_string 3))
+                  (factorial (i64_from_string 3)))))))))
+    (- (isurp3-eval $ctx ($c1 $c2 $c3) $db $norm))
+    (- (isurp3-cnt-total $ctx $norm $n))
+    (- (isurp3-cnt-j $ctx $norm $j))
+    (- (isurp3-cnt-1 $ctx $norm $k1))
+    (- (isurp3-cnt-2 $ctx $norm $k2))
+    (- (isurp3-cnt-3 $ctx $norm $k3))
+    (- (isurp3-cnt-12 $ctx $norm $k12))
+    (- (isurp3-cnt-13 $ctx $norm $k13))
+    (- (isurp3-cnt-23 $ctx $norm $k23))))
 
 
+      ;; here get min and max value from set of partition
+(exec (freq 084 isurp3-minmax)
+  (, (isurp3-pj $ctx $norm $ppat)
+     (isurp3-p1 $ctx $norm $p1)
+     (isurp3-p2 $ctx $norm $p2)
+     (isurp3-p3 $ctx $norm $p3)
+     (isurp3-p4 $ctx $norm $p4))
+  (O
+    (pure (isurp3-emin $ctx $norm $emin) $emin (min-atom (' ($p1 $p2 $p3 $p4))))
+    (pure (isurp3-emax $ctx $norm $emax) $emax (max-atom (' ($p1 $p2 $p3 $p4))))
+    (- (isurp3-p1 $ctx $norm $p1))
+    (- (isurp3-p2 $ctx $norm $p2))
+    (- (isurp3-p3 $ctx $norm $p3))
+    (- (isurp3-p4 $ctx $norm $p4))))
+
+    ;; With Raw or nonormalized 
+(exec (freq 085 isurp3-emit-raw)
+  (, (isurp3-pj $ctx False $ppat)
+     (isurp3-emin $ctx False $emin)
+     (isurp3-emax $ctx False $emax))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (abs_f64
+            (sub_f64
+              (f64_from_string $ppat)
+              (clamp_f64
+                (f64_from_string $ppat)
+                (f64_from_string $emin)
+                (f64_from_string $emax))))
+          (f64_from_string 1.0))))
+    (- (isurp3-pj $ctx False $ppat))
+    (- (isurp3-emin $ctx False $emin))
+    (- (isurp3-emax $ctx False $emax))))
+
+  ;;  With Normalize 
+(exec (freq 085 isurp3-emit-norm)
+  (, (isurp3-pj $ctx True $ppat)
+     (isurp3-emin $ctx True $emin)
+     (isurp3-emax $ctx True $emax))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (div_f64
+            (abs_f64
+              (sub_f64
+                (f64_from_string $ppat)
+                (clamp_f64
+                  (f64_from_string $ppat)
+                  (f64_from_string $emin)
+                  (f64_from_string $emax))))
+            (max_f64 (f64_from_string $emax) (f64_from_string $ppat)))
+          (f64_from_string 1.0))))
+    (- (isurp3-pj $ctx True $ppat))
+    (- (isurp3-emin $ctx True $emin))
+    (- (isurp3-emax $ctx True $emax))))
 
 
+;; =============================================================================
+;; 3. Main Function Calling: isurp-old (4-Conjunct Pattern)
+;; =============================================================================
 
+(exec (freq 080 isurp-start-4)
+  (, (isurp-old (, $c1 $c2 $c3 $c4) $db $norm))
+  (O
+    (pure (isurp4-init $ctx (, $c1 $c2 $c3 $c4) $db $norm) $ctx
+      (vars_to_indices (' (, $c1 $c2 $c3 $c4))))
+    (- (isurp-old (, $c1 $c2 $c3 $c4) $db $norm))))
 
-;; Final cleanup: 
-(exec (surp s900 cleanup-plan)
-    (, (isurp-old-of $ctx $pattern $value))
-    (,
-        (cleanup $ctx (block $ctx $partition $block))
-        (cleanup $ctx (partition $ctx $partition))
-        (cleanup $ctx (block-support $ctx $partition $block $support))
-        (cleanup $ctx (block-prob $ctx $partition $block $prob))
-        (cleanup $ctx (partition-product $ctx $partition $product))
-        (cleanup $ctx (min-partition-product $ctx $min))
-        (cleanup $ctx (max-partition-product $ctx $max))
-        (cleanup $ctx (partition-product-range $ctx $min $max))
-        (cleanup $ctx (indexed-pattern $ctx $indexed-pattern))
-        (cleanup $ctx (copy-of-partition $ctx $partition $partition-copy))
-        (cleanup $ctx (dst-above? $ctx $emin $emax $emp $out $above))
-        (cleanup $ctx (dst-below? $ctx $emin $emax $emp $out $below))
-        (cleanup $ctx (dst-inside? $ctx $emin $emax $emp $out $inside))
-        (cleanup $ctx (dst-request $ctx $emin $emax $emp $out))))
+(exec (freq 081 isurp-init-4-b)
+  (, (isurp4-init $ctx (, $c1 $c2 $c3 $c4) $db $norm))
+  (O
+    (+ (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm))
+    (+ (isurp4-cnt-total $ctx $norm 0))
+    (+ (isurp4-cnt-j $ctx $norm 0))
+    (+ (isurp4-cnt-1 $ctx $norm 0))
+    (+ (isurp4-cnt-2 $ctx $norm 0))
+    (+ (isurp4-cnt-3 $ctx $norm 0))
+    (+ (isurp4-cnt-4 $ctx $norm 0))
+    (+ (isurp4-cnt-12 $ctx $norm 0))
+    (+ (isurp4-cnt-13 $ctx $norm 0))
+    (+ (isurp4-cnt-14 $ctx $norm 0))
+    (+ (isurp4-cnt-23 $ctx $norm 0))
+    (+ (isurp4-cnt-24 $ctx $norm 0))
+    (+ (isurp4-cnt-34 $ctx $norm 0))
+    (+ (isurp4-cnt-123 $ctx $norm 0))
+    (+ (isurp4-cnt-124 $ctx $norm 0))
+    (+ (isurp4-cnt-134 $ctx $norm 0))
+    (+ (isurp4-cnt-234 $ctx $norm 0))
+    (- (isurp4-init $ctx (, $c1 $c2 $c3 $c4) $db $norm))))
 
-;; One cleanup matcher removes any fact selected by the cleanup task.
-(exec (surp s910 cleanup-fact)
-    (, (cleanup $ctx $fact) $fact)
-    (O
-        (- (cleanup $ctx $fact))
-        (- $fact)
-        ))
+    ;; Database count with atom size and store with n variable
+(exec (freq 082 isurp4-cnt-total)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $atom)
+     (isurp4-cnt-total $ctx $norm 0))
+  (O
+    (count (isurp4-cnt-total $ctx $norm $n) $n $atom)
+    (- (isurp4-cnt-total $ctx $norm 0))))
 
-;; Remove the generic cleanup tasks after they are no longer useful.
-(exec (surp s920 cleanup-task)
-    (, (cleanup $ctx $fact))
-    (O
-        (- (cleanup $ctx $fact))
-        ))
+    ;; if the joint are 0, all component are appeared with atomspace count joint as alone 
+(exec (freq 082 isurp4-cnt-j)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c2) ($db $c3) ($db $c4)
+     (isurp4-cnt-j $ctx $norm 0))
+  (O
+    (count (isurp4-cnt-j $ctx $norm $j) $j ($c1 $c2 $c3 $c4))
+    (- (isurp4-cnt-j $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-1)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) 
+     (isurp4-cnt-1 $ctx $norm 0))
+  (O (count (isurp4-cnt-1 $ctx $norm $k) $k $c1) 
+      (- (isurp4-cnt-1 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-2)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c2) (isurp4-cnt-2 $ctx $norm 0))
+  (O (count (isurp4-cnt-2 $ctx $norm $k) $k $c2) (- (isurp4-cnt-2 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-3)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c3) (isurp4-cnt-3 $ctx $norm 0))
+  (O (count (isurp4-cnt-3 $ctx $norm $k) $k $c3) (- (isurp4-cnt-3 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-4)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c4) (isurp4-cnt-4 $ctx $norm 0))
+  (O (count (isurp4-cnt-4 $ctx $norm $k) $k $c4) (- (isurp4-cnt-4 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-12)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c2) (isurp4-cnt-12 $ctx $norm 0))
+  (O (count (isurp4-cnt-12 $ctx $norm $k) $k ($c1 $c2)) (- (isurp4-cnt-12 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-13)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c3) (isurp4-cnt-13 $ctx $norm 0))
+  (O (count (isurp4-cnt-13 $ctx $norm $k) $k ($c1 $c3)) (- (isurp4-cnt-13 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-14)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c4) (isurp4-cnt-14 $ctx $norm 0))
+  (O (count (isurp4-cnt-14 $ctx $norm $k) $k ($c1 $c4)) (- (isurp4-cnt-14 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-23)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c2) ($db $c3) (isurp4-cnt-23 $ctx $norm 0))
+  (O (count (isurp4-cnt-23 $ctx $norm $k) $k ($c2 $c3)) (- (isurp4-cnt-23 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-24)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c2) ($db $c4) (isurp4-cnt-24 $ctx $norm 0))
+  (O (count (isurp4-cnt-24 $ctx $norm $k) $k ($c2 $c4)) (- (isurp4-cnt-24 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-34)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c3) ($db $c4) (isurp4-cnt-34 $ctx $norm 0))
+  (O (count (isurp4-cnt-34 $ctx $norm $k) $k ($c3 $c4)) (- (isurp4-cnt-34 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-123)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c2) ($db $c3) (isurp4-cnt-123 $ctx $norm 0))
+  (O (count (isurp4-cnt-123 $ctx $norm $k) $k ($c1 $c2 $c3)) (- (isurp4-cnt-123 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-124)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c2) ($db $c4) (isurp4-cnt-124 $ctx $norm 0))
+  (O (count (isurp4-cnt-124 $ctx $norm $k) $k ($c1 $c2 $c4)) (- (isurp4-cnt-124 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-134)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c1) ($db $c3) ($db $c4) (isurp4-cnt-134 $ctx $norm 0))
+  (O (count (isurp4-cnt-134 $ctx $norm $k) $k ($c1 $c3 $c4)) (- (isurp4-cnt-134 $ctx $norm 0))))
 
+(exec (freq 082 isurp4-cnt-234)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     ($db $c2) ($db $c3) ($db $c4) (isurp4-cnt-234 $ctx $norm 0))
+  (O (count (isurp4-cnt-234 $ctx $norm $k) $k ($c2 $c3 $c4)) (- (isurp4-cnt-234 $ctx $norm 0))))
 
+(exec (freq 083 isurp4-calc)
+  (, (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm)
+     (isurp4-cnt-total $ctx $norm $n)
+     (isurp4-cnt-j $ctx $norm $j)
+     (isurp4-cnt-1 $ctx $norm $k1)
+     (isurp4-cnt-2 $ctx $norm $k2)
+     (isurp4-cnt-3 $ctx $norm $k3)
+     (isurp4-cnt-4 $ctx $norm $k4)
+     (isurp4-cnt-12 $ctx $norm $k12)
+     (isurp4-cnt-13 $ctx $norm $k13)
+     (isurp4-cnt-14 $ctx $norm $k14)
+     (isurp4-cnt-23 $ctx $norm $k23)
+     (isurp4-cnt-24 $ctx $norm $k24)
+     (isurp4-cnt-34 $ctx $norm $k34)
+     (isurp4-cnt-123 $ctx $norm $k123)
+     (isurp4-cnt-124 $ctx $norm $k124)
+     (isurp4-cnt-134 $ctx $norm $k134)
+     (isurp4-cnt-234 $ctx $norm $k234))
+  (O
+    (pure (isurp4-pj $ctx $norm $ppat) $ppat
+      (f64_to_string
+        (div_f64
+          (f64_from_string $j)
+          (f64_from_string
+            (i64_to_string
+              (div_i64
+                (falling_factorial (i64_from_string $n) (i64_from_string 4))
+                (factorial (i64_from_string 4))))))))
+    ;; 4 partitions of type 3+1
+    (pure (isurp4-p1 $ctx $norm $p1) $p1
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k123) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k4) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p2 $ctx $norm $p2) $p2
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k124) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k3) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p3 $ctx $norm $p3) $p3
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k134) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k2) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p4 $ctx $norm $p4) $p4
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k234) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k1) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    ;; 3 partitions of type 2+2
+    (pure (isurp4-p5 $ctx $norm $p5) $p5
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k12) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k34) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p6 $ctx $norm $p6) $p6
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k13) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k24) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p7 $ctx $norm $p7) $p7
+      (f64_to_string (product_f64 (div_f64 (f64_from_string $k14) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k23) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    ;; 6 partitions of type 2+1+1
+    (pure (isurp4-p8 $ctx $norm $p8) $p8
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k12) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k3) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k4) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p9 $ctx $norm $p9) $p9
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k13) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k2) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k4) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p10 $ctx $norm $p10) $p10
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k14) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k2) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k3) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p11 $ctx $norm $p11) $p11
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k23) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k1) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k4) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p12 $ctx $norm $p12) $p12
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k24) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k1) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k3) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (pure (isurp4-p13 $ctx $norm $p13) $p13
+      (f64_to_string (product_f64 (product_f64 (div_f64 (f64_from_string $k34) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k1) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k2) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    ;; 1 partition of type 1+1+1+1
+    (pure (isurp4-p14 $ctx $norm $p14) $p14
+      (f64_to_string (product_f64 (product_f64 (product_f64 (div_f64 (f64_from_string $k1) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))) (div_f64 (f64_from_string $k2) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k3) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4))))))) (div_f64 (f64_from_string $k4) (f64_from_string (i64_to_string (div_i64 (falling_factorial (i64_from_string $n) (i64_from_string 4)) (factorial (i64_from_string 4)))))))))
+    (- (isurp4-eval $ctx ($c1 $c2 $c3 $c4) $db $norm))
+    (- (isurp4-cnt-total $ctx $norm $n))
+    (- (isurp4-cnt-j $ctx $norm $j))
+    (- (isurp4-cnt-1 $ctx $norm $k1))
+    (- (isurp4-cnt-2 $ctx $norm $k2))
+    (- (isurp4-cnt-3 $ctx $norm $k3))
+    (- (isurp4-cnt-4 $ctx $norm $k4))
+    (- (isurp4-cnt-12 $ctx $norm $k12))
+    (- (isurp4-cnt-13 $ctx $norm $k13))
+    (- (isurp4-cnt-14 $ctx $norm $k14))
+    (- (isurp4-cnt-23 $ctx $norm $k23))
+    (- (isurp4-cnt-24 $ctx $norm $k24))
+    (- (isurp4-cnt-34 $ctx $norm $k34))
+    (- (isurp4-cnt-123 $ctx $norm $k123))
+    (- (isurp4-cnt-124 $ctx $norm $k124))
+    (- (isurp4-cnt-134 $ctx $norm $k134))
+    (- (isurp4-cnt-234 $ctx $norm $k234))))
 
+(exec (freq 084 isurp4-minmax)
+  (, (isurp4-pj $ctx $norm $ppat)
+     (isurp4-p1 $ctx $norm $p1)
+     (isurp4-p2 $ctx $norm $p2)
+     (isurp4-p3 $ctx $norm $p3)
+     (isurp4-p4 $ctx $norm $p4)
+     (isurp4-p5 $ctx $norm $p5)
+     (isurp4-p6 $ctx $norm $p6)
+     (isurp4-p7 $ctx $norm $p7)
+     (isurp4-p8 $ctx $norm $p8)
+     (isurp4-p9 $ctx $norm $p9)
+     (isurp4-p10 $ctx $norm $p10)
+     (isurp4-p11 $ctx $norm $p11)
+     (isurp4-p12 $ctx $norm $p12)
+     (isurp4-p13 $ctx $norm $p13)
+     (isurp4-p14 $ctx $norm $p14))
+  (O
+    (pure (isurp4-emin $ctx $norm $emin) $emin
+      (min-atom (' ($p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 $p14))))
+    (pure (isurp4-emax $ctx $norm $emax) $emax
+      (max-atom (' ($p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 $p14))))
+    (- (isurp4-p1 $ctx $norm $p1))
+    (- (isurp4-p2 $ctx $norm $p2))
+    (- (isurp4-p3 $ctx $norm $p3))
+    (- (isurp4-p4 $ctx $norm $p4))
+    (- (isurp4-p5 $ctx $norm $p5))
+    (- (isurp4-p6 $ctx $norm $p6))
+    (- (isurp4-p7 $ctx $norm $p7))
+    (- (isurp4-p8 $ctx $norm $p8))
+    (- (isurp4-p9 $ctx $norm $p9))
+    (- (isurp4-p10 $ctx $norm $p10))
+    (- (isurp4-p11 $ctx $norm $p11))
+    (- (isurp4-p12 $ctx $norm $p12))
+    (- (isurp4-p13 $ctx $norm $p13))
+    (- (isurp4-p14 $ctx $norm $p14))))
+
+(exec (freq 085 isurp4-emit-raw)
+  (, (isurp4-pj $ctx False $ppat)
+     (isurp4-emin $ctx False $emin)
+     (isurp4-emax $ctx False $emax))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (abs_f64
+            (sub_f64
+              (f64_from_string $ppat)
+              (clamp_f64
+                (f64_from_string $ppat)
+                (f64_from_string $emin)
+                (f64_from_string $emax))))
+          (f64_from_string 1.0))))
+    (- (isurp4-pj $ctx False $ppat))
+    (- (isurp4-emin $ctx False $emin))
+    (- (isurp4-emax $ctx False $emax))))
+
+(exec (freq 085 isurp4-emit-norm)
+  (, (isurp4-pj $ctx True $ppat)
+     (isurp4-emin $ctx True $emin)
+     (isurp4-emax $ctx True $emax))
+  (O
+    (pure ($res) $res
+      (f64_to_string
+        (min_f64
+          (div_f64
+            (abs_f64
+              (sub_f64
+                (f64_from_string $ppat)
+                (clamp_f64
+                  (f64_from_string $ppat)
+                  (f64_from_string $emin)
+                  (f64_from_string $emax))))
+            (max_f64 (f64_from_string $emax) (f64_from_string $ppat)))
+          (f64_from_string 1.0))))
+    (- (isurp4-pj $ctx True $ppat))
+    (- (isurp4-emin $ctx True $emin))
+    (- (isurp4-emax $ctx True $emax))))
