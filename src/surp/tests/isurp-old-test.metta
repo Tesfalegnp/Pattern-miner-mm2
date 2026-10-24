@@ -44,6 +44,17 @@
 
 ;;; Expected result: 0.00014607068574401354
 
+;; Two-conjunct pattern with matches in &db.
+(isurp-old (, (Inheritance $x man)
+                (Inheritance $x ugly))
+                &db False)
+;;; Expected result: 0.0014161840277284003
+
+;; Empty-support case: the second conjunct is absent from &db.
+(isurp-old (, (Inheritance $x man)
+                (Inheritance $x noSuchTrait))
+                &db False)
+;;; Expected result: 0.0
 
 ; (isurp-old (, (Inheritance (And (And (Person $x) man) (Or human sodaDrinker)) (Or (And human man) (And human sodaDrinker)))
 ;                            (Inheritance (And (And (Person $x)   man) (Or human sodaDrinker)) (Or (And human man) (And human ugly)))
